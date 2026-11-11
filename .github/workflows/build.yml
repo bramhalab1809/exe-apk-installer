@@ -19,7 +19,7 @@ jobs:
       - name: Extract uploaded ZIP
         shell: pwsh
         run: |
-          Expand-Archive -Path "questify-ca.zip" -DestinationPath "app-source" -Force
+          Expand-Archive -Path "remix-ca-hub.zip" -DestinationPath "app-source" -Force
           if (!(Test-Path "app-source/package.json")) {
             throw "ZIP ke root mein package.json nahi mila."
           }
