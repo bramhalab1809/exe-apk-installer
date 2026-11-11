@@ -1,26 +1,17 @@
-name: Build Questify CA Android APK
+
+name: Build CA Hub Android APK
 
 on:
   workflow_dispatch:
-    inputs:
-      app_id:
-        description: Android application ID
-        required: false
-        default: com.bramhalab.questifyca
-        type: string
 
 permissions:
   contents: read
 
 jobs:
   build-android:
-    name: Build Android APK
+    name: Build CA Hub APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
-    env:
-      CAPACITOR_APP_ID: ${{ inputs.app_id || 'com.bramhalab.questifyca' }}
-      CAPACITOR_APP_NAME: Questify CA
 
     steps:
       - name: Checkout repository
@@ -37,7 +28,6 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # IMPORTANT: Do not request the obsolete Android SDK "tools" package.
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -47,22 +37,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Extract app source
+      - name: Extract CA Hub ZIP
         shell: bash
         run: |
           set -euo pipefail
-          test -f questify-ca.zip || {
-            echo "ERROR: questify-ca.zip is missing from repository root."
+          test -f remix-ca-hub.zip || {
+            echo "ERROR: remix-ca-hub.zip not found in repository root."
             exit 1
           }
+
           mkdir -p app-source
-          unzip -q questify-ca.zip -d app-source
+          unzip -q remix-ca-hub.zip -d app-source
+
           test -f app-source/package.json || {
-            echo "ERROR: package.json not found after extracting questify-ca.zip."
-            find app-source -maxdepth 3 -type f | head -80
+            echo "ERROR: package.json not found."
+            exit 1
+          }
+
+          test -f app-source/capacitor.config.json || {
+            echo "ERROR: capacitor.config.json not found."
             exit 1
           }
 
@@ -71,58 +66,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f package-lock.json ]; then
-            npm ci --legacy-peer-deps
-          else
-            npm install --legacy-peer-deps
-          fi
+          npm install --legacy-peer-deps
+
           npm install --no-save --legacy-peer-deps \
             @capacitor/core@7 \
             @capacitor/cli@7 \
             @capacitor/android@7
-
-      - name: Configure Capacitor
-        working-directory: app-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          const fs = require('fs');
-          const path = require('path');
-
-          const appId = process.env.CAPACITOR_APP_ID;
-          const appName = process.env.CAPACITOR_APP_NAME;
-
-          if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(appId)) {
-            throw new Error(`Invalid Android application ID: ${appId}`);
-          }
-
-          const configPath = path.resolve('capacitor.config.json');
-          const existingConfigFiles = [
-            'capacitor.config.ts',
-            'capacitor.config.js',
-            'capacitor.config.mjs'
-          ];
-
-          const existing = existingConfigFiles.filter(fs.existsSync);
-          if (existing.length) {
-            throw new Error(
-              `Found ${existing.join(', ')}. Add appId, appName and webDir to the existing Capacitor config instead of generating JSON.`
-            );
-          }
-
-          let config = {};
-          if (fs.existsSync(configPath)) {
-            config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-          }
-
-          config.appId = config.appId || appId;
-          config.appName = config.appName || appName;
-          config.webDir = config.webDir || 'dist';
-
-          fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
-          console.log('Capacitor config:', config);
-          NODE
 
       - name: Build web application
         working-directory: app-source
@@ -130,8 +79,9 @@ jobs:
         run: |
           set -euo pipefail
           npm run build
+
           test -f dist/index.html || {
-            echo "ERROR: dist/index.html not found. Check the app's build output directory."
+            echo "ERROR: dist/index.html not found."
             exit 1
           }
 
@@ -140,12 +90,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           if [ ! -d android ]; then
             npx cap add android
-          fi
-
-          if [ -f scripts/generate-icons.mjs ]; then
-            node scripts/generate-icons.mjs
           fi
 
           npx cap sync android
@@ -157,12 +104,13 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
+
           test -f app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload Android APK
+      - name: Upload CA Hub APK
         uses: actions/upload-artifact@v4
         with:
-          name: questify-ca-android-debug-apk
+          name: CA-Hub-Android-APK
           path: app-source/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
